@@ -99,8 +99,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     }
 
     @objc func changeTextures(tapGesture: UITapGestureRecognizer) {
-        
-        node.eulerAngles.y -= .pi / 8
+        node.runAction(.rotateBy(x: 0, y: .pi / 8, z: 0, duration: 0.5))
     }
 
 }
