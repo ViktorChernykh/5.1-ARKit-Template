@@ -10,15 +10,28 @@
 
 import ARKit
 
-class ViewController: UIViewController, ARSCNViewDelegate {
+class ViewController: UIViewController, ARSCNViewDelegate, UIGestureRecognizerDelegate {
+    
+    @IBOutlet var sceneView: ARSCNView!
     
     private var node = SCNNode()
-
-    @IBOutlet var sceneView: ARSCNView!
+    
+    /// Name of the node with the house
+    let nodeName = "House"
+    
+    /// True if the house is shown
+    var nodeShown = false
+    
+    /// Move the point inside the model around which it should rotate by this vector
+    let rotationPoint = SCNVector3(2, 0, -5)
+    
+    /// Scale to take the model back to normal size
+    let sceneScale: Float = 0.05
     
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        // Enable default lighting
         sceneView.autoenablesDefaultLighting = true
         
         // Set the view's delegate
@@ -34,10 +47,9 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         
         // Set the scene to the view
         sceneView.scene = scene
-
-        loadScene(sceneFile: "art.scnassets/building.scn")
         
-        setupGestures()
+        // Add tap and swipe gesture recognizers
+        addGestureRecognizers()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -45,7 +57,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         
         // Create a session configuration
         let configuration = ARWorldTrackingConfiguration()
-
+        
         // Run the view's session
         sceneView.session.run(configuration)
     }
@@ -57,22 +69,108 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         sceneView.session.pause()
     }
     
-    // Add UITapGestureRecognizer to view
-    func setupGestures() {
-        let tapGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(changeTextures))
-        tapGestureRecognizer.numberOfTapsRequired = 1
-        self.sceneView.addGestureRecognizer(tapGestureRecognizer)
-    }
-
-    // MARK: - ... Custom Methods
-    func loadScene(sceneFile: String) {
+    /// Add pan, pinch, and tap gesture recognizers
+    func addGestureRecognizers() {
+        // Add panoramic gesture recognizer
+        let panoramic = UIPanGestureRecognizer(target: self, action: #selector(panHandler(_:)))
+        panoramic.delegate = self
+        sceneView.addGestureRecognizer(panoramic)
         
+        // Add pinch handler recognizer
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinchHandler(_:)))
+        pinch.delegate = self
+        sceneView.addGestureRecognizer(pinch)
+        
+        // Add tap gesture recognizer
+        let tap = UITapGestureRecognizer(target: self, action: #selector(tapHandler(_:)))
+        tap.delegate = self
+        sceneView.addGestureRecognizer(tap)
+    }
+    
+    /// Handle pan gesture
+    @objc func panHandler(_ recognizer: UIPanGestureRecognizer) {
+        let translation = recognizer.translation(in: sceneView)
+        
+        rotateNode(by: Float(translation.x) / 100)
+        moveNode(by: -Float(translation.y) / 100)
+        
+        recognizer.setTranslation(.zero, in: sceneView)
+    }
+    
+    /// Handle pinch gesture
+    @objc func pinchHandler(_ recognizer: UIPinchGestureRecognizer) {
+        let scale = Float(1 / recognizer.scale)
+        
+        // Find the node with the house name
+        if let node = sceneView.scene.rootNode.childNode(withName: nodeName, recursively: true),
+            let pov = sceneView.pointOfView {
+            
+            // Original (camera) position
+            let x1 = pov.position.x
+            let z1 = pov.position.z
+            
+            // Target (house) position
+            let x2 = node.position.x
+            let z2 = node.position.z
+            
+            // Get the house new position
+            node.position.x = x1 + scale * (x2 - x1)
+            node.position.z = z1 + scale * (z2 - z1)
+        }
+        
+        recognizer.scale = 1
+    }
+    
+    /// Handle tap gestures
+    @objc func tapHandler(_ gestureRecognizer: UITapGestureRecognizer) {
+        if gestureRecognizer.state == .ended {
+            if nodeShown {
+                removeNode()
+            } else {
+                loadScene()
+            }
+            
+            // Revert the house is shown flag
+            nodeShown = !nodeShown
+        }
+    }
+    
+    /// Remove the house from the scene
+    func removeNode() {
+        // Find the node with the house name
+        if let node = sceneView.scene.rootNode.childNode(withName: nodeName, recursively: true) {
+            node.removeFromParentNode()
+        }
+    }
+    
+    /// Move house up and down (on Y axis)
+    func moveNode(by delta: Float) {
+        // Find the node with the house name
+        if let node = sceneView.scene.rootNode.childNode(withName: nodeName, recursively: true) {
+            node.position.y += delta / 3.0
+        }
+    }
+    
+    /// Rotate house around vertical (Y) axis
+    func rotateNode(by angle: Float) {
+        // Find the node with the name
+        if let node = sceneView.scene.rootNode.childNode(withName: nodeName, recursively: true) {
+            node.eulerAngles.y += angle
+        }
+    }
+    
+    // MARK: - Custom Methods
+    func loadScene() {
+        let sceneFile = "art.scnassets/building.scn"
         guard let scene = SCNScene(named: sceneFile) else { return }
         
         node = scene.rootNode
         
+        // Name the node so we can find it later
+        node.name = nodeName
+        
         node.position = SCNVector3(0, -0.5, -1.5)
-        node.scale = SCNVector3(0.05, 0.05, 0.05)
+        node.scale = SCNVector3(sceneScale, sceneScale, sceneScale)
         
         // get nodes
         let buildingWalls   = node.childNode(withName: "building_walls",  recursively: false)
@@ -97,9 +195,5 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         
         sceneView.scene.rootNode.addChildNode(node)
     }
-
-    @objc func changeTextures(tapGesture: UITapGestureRecognizer) {
-        node.runAction(.rotateBy(x: 0, y: .pi / 8, z: 0, duration: 0.5))
-    }
-
+    
 }
